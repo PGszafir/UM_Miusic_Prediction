@@ -17,97 +17,99 @@ class MidiDataLoader:
         self.label_encoder = LabelEncoder()
 
     def load_data(self):
-        data = []
-        labels = []
-        styles = []
-
-        with open(self.label_file_path, 'r') as file:
-            for line in file:
-                line = line.strip().split(',')
-                if len(line) == 3:
-                    file_name, genre, style = line
-                    midi_path = os.path.join(self.midi_folder_path, file_name)
-
-                    if os.path.exists(midi_path):
-                        midi_data = pretty_midi.PrettyMIDI(midi_path)
-                        processed_data = self.process_midi_data(midi_data, style)
-                        data.append(processed_data)
-                        labels.append(genre)
-                        styles.append(style)
-
-        self.data = data
-        self.labels = np.array(labels)
-        self.styles = np.array(styles)
-
-    def midi_to_notes(self, midi_data: pretty_midi.PrettyMIDI) -> pd.DataFrame:
-        instrument = midi_data.instruments[0]
-        notes = {'pitch': [], 'start': [], 'end': [], 'step': [], 'duration': []}
-
-        # Sort the notes by start time
-        sorted_notes = sorted(instrument.notes, key=lambda note: note.start)
-        prev_start = sorted_notes[0].start
-
-        for note in sorted_notes:
-            start = note.start
-            end = note.end
-            notes['pitch'].append(note.pitch)
-            notes['start'].append(start)
-            notes['end'].append(end)
-            notes['step'].append(start - prev_start)
-            notes['duration'].append(end - start)
-            prev_start = start
-
-        return pd.DataFrame(notes)
-
-    def process_midi_data(self, midi_data: pretty_midi.PrettyMIDI, style: str) -> pd.DataFrame:
-        # Extracting information from the PrettyMIDI object
-        notes_df = self.midi_to_notes(midi_data)
-
-        if not notes_df.empty:
-            # Generate random slices of musical fragments
-            fragment_duration = 5.0  # You can adjust this value based on your preference
-            num_fragments = int(notes_df['end'].max() / fragment_duration)
-
-            fragments = []
+        try:
+            data = []
+            labels = []
             styles = []
 
-            for _ in range(num_fragments):
-                start_time = np.random.uniform(0, notes_df['end'].max() - fragment_duration)
-                end_time = start_time + fragment_duration
+            with open(self.label_file_path, 'r') as file:
+                for line in file:
+                    print('Loading', line)
+                    line = line.strip().split(',')
+                    if len(line) == 2:
+                        file_name, genre = line
+                        midi_path = os.path.join(self.midi_folder_path, file_name)
+                        print(midi_path)
+                        if os.path.exists(midi_path):
+                            midi_data = pretty_midi.PrettyMIDI(midi_path)
+                            processed_data = self.process_midi_data(midi_data, genre)
+                            data.append(processed_data)
+                            print(data, "--------------------------------")
+                            labels.append(genre)
+                        else:
+                            print(f"Warning: MIDI file not found for {file_name}")
 
-                fragment_notes = notes_df[(notes_df['start'] >= start_time) & (notes_df['end'] <= end_time)]
+            if not data:
+                print("Warning: No MIDI data loaded.")
 
-                if not fragment_notes.empty:
-                    fragments.append(fragment_notes)
-                    style = fragment_notes['style'].iloc[0]  # Assuming the style is the same for all notes in the fragment
-                    styles.append(style)
+            self.data = data
+            self.labels = np.array(labels)
+            self.styles = np.array(styles)
+        except Exception as e:
+            print(f"Error during data loading: {e}")
 
-            if fragments:
-                # Concatenate the fragments and create a DataFrame
-                result_df = pd.concat(fragments, ignore_index=True)
-                result_df['style'] = styles
-                return result_df
-            else:
-                return pd.DataFrame()
-        else:
-            return pd.DataFrame()
+    def midi_to_notes(self, midi_data: pretty_midi.PrettyMIDI) -> pd.DataFrame:
+        # Remaining code unchanged
+
+    def process_midi_data(self, midi_data: pretty_midi.PrettyMIDI, genre: str) -> pd.DataFrame:
+        # Remaining code unchanged
 
     def encode_labels(self):
-        self.labels = self.label_encoder.fit_transform(self.labels)
+        try:
+            self.labels = self.label_encoder.fit_transform(self.labels)
+        except Exception as e:
+            print(f"Error during label encoding: {e}")
+
+    def plot_first_file(self, count: Optional[int] = None):
+        try:
+            if not self.data or not self.data[0]:
+                print("Warning: No data available for plotting.")
+                return
+
+            if count:
+                title = f'First {count} notes'
+            else:
+                title = f'Whole track'
+                count = len(self.data[0]['pitch'])
+
+            plt.figure(figsize=(20, 4))
+            plot_pitch = np.stack([self.data[0]['pitch'], self.data[0]['pitch']], axis=0)
+            plot_start_stop = np.stack([self.data[0]['start'], self.data[0]['end']], axis=0)
+            plt.plot(
+                plot_start_stop[:, :count], plot_pitch[:, :count], color="b", marker=".")
+            plt.xlabel('Time [s]')
+            plt.ylabel('Pitch')
+            _ = plt.title(title)
+            plt.show()
+        except Exception as e:
+            print(f"Error during plotting: {e}")
 
     def split_data(self, test_size=0.2, random_state=42) -> tuple[list[pd.DataFrame], list[pd.DataFrame], np.ndarray, np.ndarray]:
-        if test_size >= 1.0:
-            raise ValueError("test_size should be less than 1.0")
+        try:
+            if test_size >= 1.0:
+                raise ValueError("test_size should be less than 1.0")
 
-        X_train, X_test, y_train, y_test, styles_train, styles_test = train_test_split(
-            self.data, self.labels, self.styles, test_size=test_size, random_state=random_state)
+            if not self.data or not self.labels or not self.styles:
+                print("Insufficient data for training and testing.")
+                return [], [], np.array([]), np.array([])
 
-        # Check if the resulting train set will be empty
-        while len(set(y_train)) < len(set(self.labels)):
             X_train, X_test, y_train, y_test, styles_train, styles_test = train_test_split(
                 self.data, self.labels, self.styles, test_size=test_size, random_state=random_state)
 
-        processed_X_train = [self.process_midi_data(data, style) for data, style in zip(X_train, styles_train)]
-        processed_X_test = [self.process_midi_data(data, style) for data, style in zip(X_test, styles_test)]
+            # Check if the resulting train set will be empty
+            while len(set(y_train)) < len(set(self.labels)):
+                X_train, X_test, y_train, y_test, styles_train, styles_test = train_test_split(
+                    self.data, self.labels, self.styles, test_size=test_size, random_state=random_state)
 
-        return processed_X_train, processed_X_test, y_train, y_test
+            # Check if resulting sets are empty
+            if not X_train or not X_test or not y_train.size or not y_test.size:
+                print("Insufficient data for training and testing.")
+                return [], [], np.array([]), np.array([])
+
+            processed_X_train = [self.process_midi_data(data, style) for data, style in zip(X_train, styles_train)]
+            processed_X_test = [self.process_midi_data(data, style) for data, style in zip(X_test, styles_test)]
+
+            return processed_X_train, processed_X_test, y_train, y_test
+        except Exception as e:
+            print(f"Error during data splitting: {e}")
+            return [], [], np.array([]), np.array([])

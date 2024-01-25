@@ -5,9 +5,12 @@ import numpy as np
 
 # Step 1: Create an instance of MidiDataLoader
 midi_loader = MidiDataLoader('midi_files', 'midi_files/piosenka-gatunek.txt')
-# Step 1.1: Print Plot of the first file and list of loaded files
-# You can add your plotting logic here if needed.
 
+# Step 2: Load data using the MidiDataLoader
+midi_loader.load_data()
+print(midi_loader.data)
+# Step 1.1: Print Plot of the first file and list of loaded files
+#midi_loader.plot_first_file(count=10)
 # Step 2: Load data using the MidiDataLoader
 midi_loader.load_data()
 midi_loader.encode_labels()
